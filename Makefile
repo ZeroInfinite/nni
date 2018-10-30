@@ -1,8 +1,8 @@
 # Setting variables
 
 SHELL := /bin/bash
-PIP_INSTALL := pip3 install
-PIP_UNINSTALL := pip3 uninstall
+PIP_INSTALL := python3 -m pip install
+PIP_UNINSTALL := python3 -m pip uninstall
 
 ## Colorful output
 _INFO := $(shell echo -e '\e[1;36m')
@@ -49,35 +49,28 @@ build:
 	#$(_INFO) Building nnictl $(_END)
 	cd tools && python3 setup.py build
 
-# Standard installation target
-# Must be invoked after building
-.PHONY: install
-install: install-python-modules
-install: install-node-modules
-install: install-scripts
-install:
-	#$(_INFO) Complete! You may want to add $(BIN_FOLDER) to your PATH environment $(_END)
-
-
-# Target for remote machine workers
-# Only installs core SDK module
-.PHONY: remote-machine-install
-remote-machine-install:
-	cd src/sdk/pynni && python3 setup.py install $(PIP_MODE)
-
-
 # All-in-one target for non-expert users
 # Installs NNI as well as its dependencies, and update bashrc to set PATH
 .PHONY: easy-install
 easy-install: check-perm
 easy-install: install-dependencies
 easy-install: build
-easy-install: install
+easy-install: install-python-modules
+easy-install: install-node-modules
+easy-install: install-scripts
 easy-install: update-bash-config
-
 easy-install:
 	#$(_INFO) Complete! $(_END)
 
+# Target for NNI developers
+# Creates symlinks instead of copying files
+.PHONY: dev-install
+dev-install: check-dev-env
+dev-install: dev-install-python-modules
+dev-install: dev-install-node-modules
+dev-install: install-scripts
+dev-install:
+	#$(_INFO) Complete! You may want to add $(BIN_FOLDER) to your PATH environment $(_END)
 
 # Target for setup.py
 # Do not invoke this manually
@@ -87,17 +80,6 @@ pip-install: build
 pip-install: install-node-modules
 pip-install: install-scripts
 pip-install: update-bash-config
-
-
-# Target for NNI developers
-# Creates symlinks instead of copying files
-.PHONY: dev-install
-dev-install: check-dev-env
-dev-install: install-dev-modules
-dev-install: install-scripts
-dev-install:
-	#$(_INFO) Complete! You may want to add $(BIN_FOLDER) to your PATH environment $(_END)
-
 
 .PHONY: uninstall
 uninstall:
@@ -109,7 +91,6 @@ uninstall:
 	-rm -f $(BASH_COMP_SCRIPT)
 
 # Main targets end
-
 
 # Helper targets
 
@@ -144,6 +125,14 @@ install-python-modules:
 	#$(_INFO) Installing nnictl $(_END)
 	cd tools && $(PIP_INSTALL) $(PIP_MODE) .
 
+.PHONY: dev-install-python-modules
+dev-install-python-modules:
+	#$(_INFO) Installing Python SDK $(_END)
+	cd src/sdk/pynni && $(PIP_INSTALL) $(PIP_MODE) -e .
+	
+	#$(_INFO) Installing nnictl $(_END)
+	cd tools && $(PIP_INSTALL) $(PIP_MODE) -e .
+
 .PHONY: install-node-modules
 install-node-modules:
 	#$(_INFO) Installing NNI Package $(_END)
@@ -153,36 +142,16 @@ install-node-modules:
 	$(NNI_YARN) --prod --cwd $(NNI_PKG_FOLDER)
 	cp -r src/webui/build $(NNI_PKG_FOLDER)/static
 
-.PHONY: install-dev-modules
-install-dev-modules:
-	#$(_INFO) Installing Python SDK $(_END)
-	cd src/sdk/pynni && $(PIP_INSTALL) $(PIP_MODE) -e .
-	
-	#$(_INFO) Installing nnictl $(_END)
-	cd tools && $(PIP_INSTALL) $(PIP_MODE) -e .
-	
+.PHONY: dev-install-node-modules
+dev-install-node-modules:
 	#$(_INFO) Installing NNI Package $(_END)
 	rm -rf $(NNI_PKG_FOLDER)
 	ln -sf ${PWD}/src/nni_manager/dist $(NNI_PKG_FOLDER)
 	ln -sf ${PWD}/src/nni_manager/node_modules $(NNI_PKG_FOLDER)/node_modules
 	ln -sf ${PWD}/src/webui/build $(NNI_PKG_FOLDER)/static
 
-
 .PHONY: install-scripts
 install-scripts:
-	mkdir -p $(BIN_FOLDER)
-
-	touch $(BIN_FOLDER)/nnictl
-	echo "#!/usr/bin/python3" >>$(BIN_FOLDER)/nnictl
-	echo "# -*- coding: utf-8 -*-" >>$(BIN_FOLDER)/nnictl
-	echo "import re" >>$(BIN_FOLDER)/nnictl
-	echo "import sys" >>$(BIN_FOLDER)/nnictl
-	echo "from nnicmd.nnictl import parse_args" >>$(BIN_FOLDER)/nnictl
-	echo "if __name__ == '__main__':" >>$(BIN_FOLDER)/nnictl
-	echo "    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$$', '', sys.argv[0])" >>$(BIN_FOLDER)/nnictl
-	echo "    sys.exit(parse_args())" >>$(BIN_FOLDER)/nnictl
-
-	chmod +x $(BIN_FOLDER)/nnictl
 	install -Dm644 tools/bash-completion $(BASH_COMP_SCRIPT)
 
 .PHONY: update-bash-config
@@ -201,7 +170,6 @@ else
 update-bash-config: ;
 endif
 
-
 .PHONY: check-perm
 ifdef _ROOT
 check-perm:
@@ -212,7 +180,6 @@ check-perm:
 else
 check-perm: ;
 endif
-
 
 .PHONY: check-dev-env
 check-dev-env:
